@@ -4,12 +4,12 @@ on:
   push:
     branches: [main]
   pull_request:
-  # The suite went red on 2026-08-22 because a fixture's `expiresAt` literal
-  # passed, and nothing told anyone — there was no CI at all, and the extension
-  # only gets built when someone cuts a .vsix. A nightly run is what turns
-  # "this rots on a date" into a message rather than a surprise during a demo.
-  schedule:
-    - cron: '17 6 * * *'
+  # No nightly schedule. It was added after a fixture's `expiresAt` literal
+  # passed on 2026-08-22 and turned the suite red with no one told; that
+  # fixture is now relative to now, and in a repo that goes weeks without a
+  # commit the nightly was re-testing an unchanged tree (24 runs, no news).
+  # A test that depends on today's date has to fake the clock instead. To
+  # re-check an idle tree on demand, run this workflow by hand.
   workflow_dispatch:
 
 jobs:
