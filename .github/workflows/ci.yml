@@ -1,8 +1,12 @@
 name: CI
 
+# No `push: main`. Changes land through PRs, and the automerge gate requires
+# this workflow's PR run (Typecheck + tests) before it squash-merges. Nothing
+# reads a run on main: releases are built locally from a tag (RELEASING.md).
+# The PR run tests the PR merged onto main as it was then, so two PRs merged
+# back to back can meet untested on main; run this workflow by hand
+# (workflow_dispatch) when that happens.
 on:
-  push:
-    branches: [main]
   pull_request:
   # The suite went red on 2026-08-22 because a fixture's `expiresAt` literal
   # passed, and nothing told anyone — there was no CI at all, and the extension
