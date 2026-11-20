@@ -7,12 +7,13 @@ const escape = (text: string): string => text.replace(/[&<>"']/g, c => ({ '&': '
  * one of the same length), then **bold** outside them. Anything else,
  * unmatched markers included, stays literal.
  */
-function inline(text: string): string {
+function inline(text: string, cell = false): string {
   const code: string[] = [];
   const keep = (html: string) => `\0${code.push(html) - 1}\0`;
   return escape(text.replace(/\0/g, ''))
     .replace(/(?<!`)(`+)(?!`)([\s\S]*?[^`])\1(?!`)/g, (_, _run: string, span: string) => keep(`<code>${/^ .*[^ ].* $/.test(span) ? span.slice(1, -1) : span}</code>`))
-    .replace(/\\\|/g, '|')
+    // A table cell's `\|` was already unescaped by cells(); doing it again eats a literal backslash.
+    .replace(/\\\|/g, cell ? '\\|' : '|')
     .replace(/\*\*(?=\S)((?:(?!\*\*).)+?)(?<=\S)\*\*/g, '<strong>$1</strong>')
     .replace(/\0(\d+)\0/g, (_, n: string) => code[Number(n)]);
 }
@@ -58,7 +59,7 @@ function blocks(lines: string[]): string {
     const last = out[out.length - 1];
     if (isTable(line, lines[i + 1])) {
       const width = cells(line).length;
-      const row = (tag: string, text: string) => `<tr>${cells(text).slice(0, width).map(cell => `<${tag}>${inline(cell)}</${tag}>`).join('')}</tr>`;
+      const row = (tag: string, text: string) => `<tr>${cells(text).slice(0, width).map(cell => `<${tag}>${inline(cell, true)}</${tag}>`).join('')}</tr>`;
       const rows: string[] = [];
       for (i += 2; i < lines.length && lines[i].includes('|') && !ENDS_TABLE.test(lines[i]); i++) rows.push(row('td', lines[i]));
       i--;

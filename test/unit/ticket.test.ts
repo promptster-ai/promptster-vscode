@@ -49,4 +49,9 @@ describe('readable ticket', () => {
     const html = render('A | B\n-|-\n1 | `a\\|b`\n# Next | read | this\n- item | more');
     expect(html).toContain('<tbody><tr><td>1</td><td><code>a|b</code></td></tr></tbody></table>\n<h3>Next | read | this</h3>\n<p class="item">item | more</p>');
   });
+  it('unescapes a table pipe once, so a literal backslash before it survives', () => {
+    const html = renderTicket('| A | B |\n|---|---|\n| x \\\\| y | `p\\\\|q` |\n\nout \\| side', { id:'X-1', title:'T', specFile:'X-1.spec' });
+    expect(html).toContain('<td>x \\| y</td><td><code>p\\|q</code></td>');
+    expect(html).toContain('<p>out | side</p>');
+  });
 });
