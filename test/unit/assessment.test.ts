@@ -171,3 +171,17 @@ describe('hosted box without assessment.json',()=>{
     expect(existsSync(join(root,'TASK.html'))).toBe(false);
   });
 });
+describe('submit stays reachable', () => {
+  // At 1440x900 the Assessment view got a third of the sidebar (~250px) and
+  // clipped "Open Claude Code" and the whole Finish section below the fold.
+  it('gives Assessment more of the sidebar than Teammates and pins the Finish section', () => {
+    const views = JSON.parse(readFileSync(join(__dirname, '../../package.json'), 'utf8')).contributes.views.promptster as Array<{ id: string; initialSize: number }>;
+    const size = (id: string) => views.find(v => v.id === id)!.initialSize;
+    // Its content needs ~390px of the ~760px the two views share at 900px tall.
+    const share = size('promptster.assessment') / (size('promptster.assessment') + size('promptster.teammates'));
+    expect(share).toBeGreaterThanOrEqual(0.55);
+    const source = readFileSync(join(__dirname, '../../src/ui/assessment.ts'), 'utf8');
+    expect(source).toContain('#content>section:last-child{position:sticky;bottom:0;');
+    expect(source).toMatch(/<section><div class="label">Finish your work<\/div>.*?<\/section><\/div><\/main>/);
+  });
+});

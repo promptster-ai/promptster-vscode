@@ -70,14 +70,14 @@
           "type": "webview",
           "name": "Assessment",
           "when": "promptster.assessmentWorkspace",
-          "initialSize": 1
+          "initialSize": 5
         },
         {
           "id": "promptster.teammates",
           "type": "webview",
           "name": "Teammates",
           "when": "promptster.ticketFlow",
-          "initialSize": 2
+          "initialSize": 4
         }
       ]
     }
