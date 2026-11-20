@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import * as vscode from 'vscode';
@@ -19,17 +19,26 @@ function view() {
 beforeEach(()=>{vi.restoreAllMocks();resetState();root=mkdtempSync(join(tmpdir(),'assessment-view-'));state.workspaceRoot=root;writeFileSync(join(root,'assessment.json'),JSON.stringify({id:'INV-907',title:'Inventory incident',specFile:'INV-907.spec'}));vi.spyOn(config,'readSession').mockReturnValue(session)});
 afterEach(()=>rmSync(root,{recursive:true,force:true}));
 describe('native assessment actions',()=>{
-  it('creates a rendered HTML ticket without overwriting source or an existing HTML file', async () => {
+  it('shows the ticket in a webview panel and writes nothing into the repo', async () => {
     const source = '# Ticket\n\nOriginal notes <script>bad()</script>';
     writeFileSync(join(root, 'TASK.md'), source);
-    const open = vi.spyOn(vscode.commands, 'executeCommand');
+    const before = readdirSync(root).sort();
     view(); await receive({ action: 'ticket', sessionId: 's1' });
-    expect(open).toHaveBeenCalledWith('vscode.openWith', expect.objectContaining({ fsPath: join(root, 'TASK.html') }), 'promptster.ticket');
-    expect(readFileSync(join(root, 'TASK.html'), 'utf8')).toContain('&lt;script&gt;');
+    expect(state.panels).toHaveLength(1);
+    expect(state.panels[0]).toMatchObject({ viewType: 'promptster.ticket', title: 'INV-907 · Ticket', options: { enableScripts: false, localResourceRoots: [] } });
+    expect(state.panels[0].webview.html).toContain('&lt;script&gt;');
+    expect(readdirSync(root).sort()).toEqual(before);
     expect(readFileSync(join(root, 'TASK.md'), 'utf8')).toBe(source);
-    writeFileSync(join(root, 'TASK.html'), '<p>Candidate notes</p>');
+    // A second click re-renders the same panel from the current TASK.md.
+    writeFileSync(join(root, 'TASK.md'), '# Ticket\n\nUpdated');
     await receive({ action: 'ticket', sessionId: 's1' });
-    expect(readFileSync(join(root, 'TASK.html'), 'utf8')).toBe('<p>Candidate notes</p>');
+    expect(state.panels).toHaveLength(1);
+    expect(state.panels[0].webview.html).toContain('Updated');
+    expect(state.panels[0].revealed).toBe(2);
+    // Closed, the next click opens a fresh one.
+    state.panels[0].dispose();
+    await receive({ action: 'ticket', sessionId: 's1' });
+    expect(state.panels).toHaveLength(2);
   });
   it('launches the permitted native tool once, then focuses its terminal',async()=>{view();await receive({action:'tool',tool:'codex',sessionId:'s1'});await receive({action:'tool',tool:'codex',sessionId:'s1'});expect(state.terminals).toHaveLength(1);expect(state.terminals[0].commands).toEqual(['promptster codex']);expect(state.terminals[0].shown).toBe(true)});
   it('focuses the agent terminal launched by the existing session lifecycle', async () => {

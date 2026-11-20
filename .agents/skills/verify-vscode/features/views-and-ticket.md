@@ -6,7 +6,8 @@ and the rendered ticket.
 
 ## Sub-features
 
-From `contributes` — a view container plus two webview views and a custom editor:
+From `contributes` — a view container plus two webview views, and the ticket panel
+the Assessment view opens:
 
 - **Container `promptster`** — activity bar, title "Promptster",
   icon `assets/activity.svg`.
@@ -18,9 +19,9 @@ From `contributes` — a view container plus two webview views and a custom edit
   `when: promptster.ticketFlow`. Provider `TeammatesView`
   (`src/ui/teammates.ts`). Lists personas from
   `GET {apiUrl}/v1/sessions/{id}/teammates` and sends messages to them.
-- **Custom editor `promptster.ticket`** — viewType `promptster.ticket`, selector
-  `TASK.html`, priority `default`. `TicketEditor` renders the document inside a
-  webview with `enableScripts: false` and a `default-src 'none'` CSP.
+- **Ticket panel `promptster.ticket`** — a webview panel (not a contribution),
+  opened by *Open ticket*. `showTicket` (`src/ui/ticket.ts`) renders `TASK.md`
+  into it with `enableScripts: false` and a `default-src 'none'` CSP.
 - **Auto-generated commands** — VS Code synthesises `promptster.teammates.focus`,
   `.open` and `.resetViewLocation` for the view. They are real and appear in the
   registry; they are not in `contributes.commands`.
@@ -61,9 +62,9 @@ node $CV drive --workspace /tmp/pv-views --keep-open
   from that file, plus one tool button per entry in the session's `tools`. With
   the brief absent it shows "Open your assessment to begin." Both are correct
   states; which one you get is decided by the workspace you built.
-- *Open ticket* creates `TASK.html` in the workspace root (from `TASK.md`) and
-  opens it with viewType `promptster.ticket` — the rendered ticket, not raw HTML
-  source. Check the file appeared on disk; that is the observable side effect.
+- *Open ticket* opens the "<id> · Ticket" webview panel, rendered from
+  `TASK.md`. It writes nothing: no `TASK.html` appears in the workspace and
+  `git status` stays clean. A second click re-renders the same panel.
 - The Teammates view is visible only after a successful `teammates` API call sets
   `promptster.ticketFlow`. Against the generated workspace's dead `apiUrl` it
   correctly stays hidden and posts an error state.
@@ -85,11 +86,10 @@ node $CV drive --workspace /tmp/pv-views --keep-open
 - **`not_ticket_flow` is a legitimate answer, not a failure.** The view remembers
   that session id and stops asking. An empty Teammates view on a non-ticket-flow
   session is correct.
-- **`TASK.html` is written with `flag: 'wx'`** — it is created once and never
-  overwritten. A second *Open ticket* on a workspace that already has one opens
-  the existing file. If you are verifying a change to `renderTicket()`, delete
-  `TASK.html` first or you will be looking at the previous render.
-- **The ticket editor runs with scripts disabled and `localResourceRoots: []`.**
+- **The ticket is never a file.** Up to 0.3.18 *Open ticket* wrote `TASK.html`
+  into the repo, where the CLI's snapshot staged it and it was submitted as the
+  candidate's work. A `TASK.html` appearing on disk is that regression.
+- **The ticket panel runs with scripts disabled and `localResourceRoots: []`.**
   Only public ticket text is rendered and markdown HTML is escaped to text. A
   change that enables scripts to make something render is a security regression,
   not a fix.

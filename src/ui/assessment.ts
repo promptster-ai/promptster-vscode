@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
-import { renderTicket } from './ticket';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { showTicket } from './ticket';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { readSession, isExpired } from '../config';
@@ -140,9 +140,7 @@ export class AssessmentView implements vscode.WebviewViewProvider {
       if (request.action === 'ticket') {
         const specFile = brief.specFile;
         if (!specFile) { await openTaskMd(root); return; }
-        const path = join(root, 'TASK.html');
-        if (!existsSync(path)) writeFileSync(path, renderTicket(readFileSync(join(root, 'TASK.md'), 'utf8'), { ...brief, specFile }), { flag: 'wx' });
-        await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.file(path), 'promptster.ticket');
+        showTicket(readFileSync(join(root, 'TASK.md'), 'utf8'), { ...brief, specFile });
       } else if (request.action === 'handoff') {
         if (!brief.specFile) return;
         const uri = vscode.Uri.file(join(root, brief.specFile));
