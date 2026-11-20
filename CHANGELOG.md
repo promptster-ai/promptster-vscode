@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.18
+
+### A capture event the edge blocks is resent gzipped
+Render's edge WAF answers some ingest bodies with an HTML 403 "Blocked" page
+before they reach the API. A terminal command like
+`source .venv/bin/activate 2>/dev/null; python -m pytest -q` was one, so the
+extension lost the event and grading could say no tests were run. The sender
+still sends plain first; on a 403 with an HTML Content-Type (the edge's page,
+never the API's JSON) it resends the same bytes once, gzipped, within the same
+10 s deadline. hire-api inflates gzipped ingest bodies since
+promptster-hire-backend#68. If a backend refuses the gzipped resend, the
+sender stops resending, and the event is requeued as before (#34).
+
 ## 0.3.17
 
 ### The Teammates chatbox stays in view
