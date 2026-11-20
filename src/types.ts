@@ -130,6 +130,14 @@ export interface PromptsterSession extends PromptsterConfig {
   assessmentTitle?: string;
   /** `issueId` as ARM wrote it — the problem key shown above the title. */
   issueId?: string;
+  /** The directory `promptster done` stages and uploads, when the CLI recorded it. */
+  taskRoot?: string;
+  /**
+   * The commit the CLI measures the submitted diff against: `diffBaseCommit`,
+   * else `repoCommit` (promptster-cli diffBaseFor). Lists the changed files in
+   * the submit confirmation.
+   */
+  diffBase?: string;
   /** Which file the session state was read from, for diagnostics. */
   sourceFile: string;
 }

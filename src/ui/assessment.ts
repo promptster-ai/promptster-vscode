@@ -3,6 +3,8 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { showTicket } from './ticket';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { timeLeftText } from './timeLeft';
 import { readSession, isExpired } from '../config';
 import type { PromptsterSession } from '../types';
 
@@ -59,7 +61,7 @@ function briefAt(root: string): WorkspaceBrief | null {
  * Nothing in the hosted lane writes `assessment.json` — not provisioning, not
  * ARM, not `promptster start --seeded` — so gating the view on it alone meant
  * `promptster.assessmentWorkspace` was false on every hosted box and the
- * candidate never saw "Review & submit". ARM's session already carries the
+ * candidate never saw the submit button. ARM's session already carries the
  * title and problem key; a root-level `<key>.spec` (the ticket-flow stub
  * provisioning seeds) is the handoff when there is exactly one.
  */
@@ -75,6 +77,46 @@ export function hostedBrief(root: string, session: PromptsterSession | null): Wo
 
 function workspaceBrief(root: string | undefined, session: PromptsterSession | null): WorkspaceBrief | null {
   return root ? briefAt(root) ?? hostedBrief(root, session) : null;
+}
+
+/** What `promptster done` leaves out of `git add -A` (promptster-cli gitExcludePathspecs). */
+const NOT_SUBMITTED = ['--', '.', ...['TASK.md', '.promptster/', '.claude/settings.local.json', '.claude/commands/explain.md'].map(path => `:(top,exclude)${path}`)];
+
+/**
+ * The files the candidate changed, as `promptster done` sees them: the diff
+ * against the CLI's base commit (HEAD~1 when the session records none, as the
+ * CLI does) plus untracked files, as of now on disk. Null when that can't be
+ * known (git fails), so the confirmation says so instead of "no changes".
+ */
+export async function changedFiles(root: string, base: string | undefined): Promise<string[] | null> {
+  base ??= 'HEAD~1';
+  const git = (...args: string[]) => new Promise<string[]>((resolve, reject) =>
+    execFile('git', ['-C', root, ...args], { timeout: 5_000, maxBuffer: 8 << 20 }, (error, stdout) =>
+      error ? reject(error) : resolve(String(stdout).split('\0').filter(Boolean))));
+  try {
+    const [diff, untracked] = await Promise.all([
+      git('diff', '--name-only', '--relative', '-z', base, ...NOT_SUBMITTED),
+      git('ls-files', '--others', '--exclude-standard', '-z', ...NOT_SUBMITTED),
+    ]);
+    return [...new Set([...diff, ...untracked])].sort();
+  } catch {
+    return null;
+  }
+}
+
+/** The submit confirmation's detail: what submitting does, the time left, and what changed. */
+export function submitDetail(files: string[] | null, deadlineAt: number | undefined, unsaved = 0, now = Date.now()): string {
+  const lines = ["This uploads your workspace as it is now and ends the assessment. You can't undo it or keep working afterwards."];
+  if (deadlineAt !== undefined) lines.push(`Time left: ${timeLeftText(deadlineAt - now)}. Your work is submitted automatically when it runs out.`);
+  if (files === null) lines.push("Couldn't list your changed files.");
+  else if (!files.length) lines.push('No changes found in this workspace.');
+  else {
+    const shown = files.slice(0, 10).map(file => `  ${file}`);
+    if (files.length > 10) shown.push(`  and ${files.length - 10} more`);
+    lines.push(`Changed files (${files.length}):\n${shown.join('\n')}`, 'Secret files such as .env and private keys are left out of the upload.');
+  }
+  if (unsaved) lines.push(`Unsaved changes in ${unsaved} open file${unsaved === 1 ? '' : 's'} will be saved and submitted.`);
+  return lines.join('\n\n');
 }
 
 /** Open TASK.md rendered. Falls back to the source if the markdown preview is unavailable. */
@@ -164,17 +206,27 @@ export class AssessmentView implements vscode.WebviewViewProvider {
         }
         terminal.show();
       } else if (request.action === 'submit') {
-        // Keep the established CLI confirmation/upload flow; do not fake completion.
+        // Keep the established CLI upload flow; do not fake completion.
         const key = `${session.sessionId}:submit`;
         let terminal = this.terminals.get(key);
         if (!terminal) {
           if (this.submitting) return;
           this.submitting = true;
           try {
-            const accepted = await vscode.window.showWarningMessage('Review and submit this assessment? The submission command will guide you through the final steps.', { modal: true }, 'Review submission');
-            if (accepted !== 'Review submission') return;
+            // `promptster done` submits at once, with no prompt of its own, so this
+            // modal is the only confirmation: it must say that, and show what goes.
+            // Nothing is saved until the candidate accepts; unsaved editors are counted.
+            const unsaved = (vscode.workspace.textDocuments ?? []).filter(document => document.isDirty).length;
+            const detail = submitDetail(await changedFiles(session.taskRoot ?? root, session.diffBase), session.deadlineAt, unsaved);
+            const accepted = await vscode.window.showWarningMessage('Submit your assessment now?', { modal: true, detail }, 'Submit now');
+            if (accepted !== 'Submit now') return;
             const current = readSession();
             if (!current?.consentAccepted || current.sessionId !== session.sessionId || isExpired(current)) return;
+            // Time ran out while the modal was open: the automatic submit is already running.
+            if (current.deadlineAt !== undefined && current.deadlineAt <= Date.now()) {
+              void vscode.window.showInformationMessage("Time's up. Your work is being submitted automatically.");
+              return;
+            }
             if (!await vscode.workspace.saveAll(false)) throw new Error('Some files could not be saved. Save them before submitting.');
             terminal = vscode.window.createTerminal({ name: 'Assessment submission', cwd: root });
             this.terminals.set(key, terminal);
@@ -195,7 +247,7 @@ function html(): string {
   const nonce = randomBytes(18).toString('hex');
   return `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}'"><style nonce="${nonce}">
   *{box-sizing:border-box}body{margin:0;color:var(--vscode-foreground);background:var(--vscode-sideBar-background);font:12px/1.6 var(--vscode-font-family)}main{padding:10px 14px 0}.label{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--vscode-descriptionForeground)}h1{font-size:15px;line-height:1.35;font-weight:600;margin:4px 0 12px}button{font:inherit;text-align:left;cursor:pointer;width:100%;padding:6px 10px;margin:0 0 6px;border-radius:3px;border:1px solid var(--vscode-panel-border);background:var(--vscode-editor-background);color:var(--vscode-foreground)}button:hover{background:var(--vscode-list-hoverBackground)}button:focus-visible{outline:2px solid var(--vscode-focusBorder)}section{margin:12px 0 0;padding-top:10px;border-top:1px solid var(--vscode-panel-border)}p{color:var(--vscode-descriptionForeground);font-size:11px;margin:4px 0 8px}#content>section:last-child{position:sticky;bottom:0;padding-bottom:8px;background:var(--vscode-sideBar-background)}.primary{background:var(--vscode-button-background);color:var(--vscode-button-foreground)}.primary:hover{background:var(--vscode-button-hoverBackground)}[hidden]{display:none!important}
-  </style></head><body><main><div id="empty">Open your assessment to begin.</div><div id="content" hidden><div id="key" class="label"></div><h1 id="title"></h1><button id="ticket">Open ticket</button><button id="handoff">Open handoff</button><section><div class="label">Coding tool</div><p>Enabled by the hiring company. Opens in your integrated terminal.</p><div id="tools"></div></section><section><div class="label">Finish your work</div><p>Save your work, then review your submission.</p><button id="submit" class="primary">Review &amp; submit</button></section></div></main><script nonce="${nonce}">
+  </style></head><body><main><div id="empty">Open your assessment to begin.</div><div id="content" hidden><div id="key" class="label"></div><h1 id="title"></h1><button id="ticket">Open ticket</button><button id="handoff">Open handoff</button><section><div class="label">Coding tool</div><p>Enabled by the hiring company. Opens in your integrated terminal.</p><div id="tools"></div></section><section><div class="label">Finish your work</div><p>Submitting uploads your work and ends the assessment.</p><button id="submit" class="primary">Submit assessment</button></section></div></main><script nonce="${nonce}">
   const api=acquireVsCodeApi(),el=id=>document.getElementById(id);let sessionId=null;const act=(action,tool)=>api.postMessage({action,tool,sessionId});el('ticket').onclick=()=>act('ticket');el('handoff').onclick=()=>act('handoff');el('submit').onclick=()=>act('submit');window.addEventListener('message',({data})=>{if(data.type!=='state')return;sessionId=data.sessionId;el('content').hidden=!data.brief;el('empty').hidden=!!data.brief;el('tools').replaceChildren();if(!data.brief)return;el('key').textContent=data.brief.id;el('title').textContent=data.brief.title;el('ticket').textContent=data.brief.specFile?'Open ticket':'Open task';el('handoff').hidden=!data.brief.specFile;el('handoff').textContent='Open '+(data.brief.specFile||'');for(const tool of data.tools){const b=document.createElement('button');b.textContent='Open '+tool.name;b.onclick=()=>act('tool',tool.id);el('tools').append(b)}if(!data.tools.length)el('tools').textContent='No coding tool is enabled for this session.'});api.postMessage({type:'ready'});
   </script></body></html>`;
 }

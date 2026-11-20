@@ -1,5 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync, readdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, readdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import * as vscode from 'vscode';
@@ -7,7 +8,7 @@ import * as config from '../../src/config';
 import { fromJson } from '../../src/config';
 vi.mock('vscode', () => import('../fakes/vscode'));
 import { state, resetState } from '../fakes/vscode';
-import { AssessmentView, parseWorkspaceBrief, hostedBrief } from '../../src/ui/assessment';
+import { AssessmentView, parseWorkspaceBrief, hostedBrief, changedFiles, submitDetail } from '../../src/ui/assessment';
 let root: string;
 const session = fromJson({apiUrl:'https://api.example.test',sessionToken:'test',sessionId:'s1',tools:['codex'],consentAccepted:true,noSelfEvict:true},'.promptster/session.json')!;
 let receive: (request: unknown) => Promise<void>;
@@ -53,29 +54,100 @@ describe('native assessment actions',()=>{
   it('does not submit if consent changes while confirmation is open', async () => {
     view();
     const window = vscode.window as unknown as Record<string, unknown>;
-    const previous = window.showWarningMessage;
+    const workspace = vscode.workspace as unknown as Record<string, unknown>;
+    const previous = [window.showWarningMessage, workspace.saveAll];
     window.showWarningMessage = vi.fn(async () => {
       vi.spyOn(config, 'readSession').mockReturnValue({ ...session, consentAccepted: false });
-      return 'Review submission';
+      return 'Submit now';
     });
+    workspace.saveAll = vi.fn(async () => true);
     try {
       await receive({ action: 'submit', sessionId: 's1' });
+      // The view does not await its handler: let the flow run past the modal.
+      await vi.waitFor(() => expect(window.showWarningMessage).toHaveBeenCalled());
+      await new Promise(resolve => setTimeout(resolve, 10));
       expect(state.terminals).toHaveLength(0);
     } finally {
-      if (previous === undefined) delete window.showWarningMessage;
-      else window.showWarningMessage = previous;
+      if (previous[0] === undefined) delete window.showWarningMessage; else window.showWarningMessage = previous[0];
+      if (previous[1] === undefined) delete workspace.saveAll; else workspace.saveAll = previous[1];
     }
+  });
+  // `promptster done` submits with no prompt of its own: the modal is the only
+  // confirmation, so it must say it submits now and show what goes.
+  it('says submitting is final and lists what changed since the base commit', async () => {
+    const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { encoding: 'utf8' }).trim();
+    git('init', '-q'); writeFileSync(join(root, '.gitignore'), 'ignored/\n'); writeFileSync(join(root, 'a.py'), 'a\n'); writeFileSync(join(root, 'same.py'), 's\n');
+    git('add', '.'); git('commit', '-qm', 'base');
+    const base = git('rev-parse', 'HEAD');
+    writeFileSync(join(root, 'a.py'), 'changed\n'); writeFileSync(join(root, 'committed.py'), 'c\n'); git('add', 'committed.py'); git('commit', '-qm', 'agent commit');
+    writeFileSync(join(root, 'new.py'), 'n\n'); mkdirSync(join(root, '.promptster')); writeFileSync(join(root, '.promptster', 'session.json'), '{}'); mkdirSync(join(root, 'ignored')); writeFileSync(join(root, 'ignored', 'x'), 'x');
+    vi.spyOn(config, 'readSession').mockReturnValue(fromJson({ apiUrl: 'https://api.example.test', sessionToken: 'test', sessionId: 's1', tools: ['codex'], consentAccepted: true, diffBaseCommit: base, repoCommit: 'deadbeef', startedAt: new Date().toISOString(), timeLimitMinutes: 30 }, '.promptster/session.json')!);
+    const window = vscode.window as unknown as Record<string, unknown>;
+    const workspace = vscode.workspace as unknown as Record<string, unknown>;
+    const previous = [window.showWarningMessage, workspace.saveAll];
+    const confirm = vi.fn(async (..._args: unknown[]) => undefined);
+    window.showWarningMessage = confirm;
+    workspace.saveAll = vi.fn(async () => true);
+    try {
+      view(); await receive({ action: 'submit', sessionId: 's1' });
+      await vi.waitFor(() => expect(confirm).toHaveBeenCalled(), { timeout: 10_000 });
+      const [message, options, button] = confirm.mock.calls[0] as [string, { modal: boolean; detail: string }, string];
+      expect(message).toBe('Submit your assessment now?');
+      expect(button).toBe('Submit now');
+      expect(options.modal).toBe(true);
+      expect(options.detail).toContain("can't undo it");
+      expect(options.detail).toMatch(/Time left: \d+:\d\d\./);
+      expect(options.detail).toContain('Changed files (3):\n  a.py\n  committed.py\n  new.py');
+      expect(options.detail).not.toContain('ignored');
+      expect(options.detail).not.toContain('.promptster');
+      // Cancelling saves nothing.
+      expect(workspace.saveAll).not.toHaveBeenCalled();
+      // Cancelled: nothing runs.
+      expect(state.terminals).toHaveLength(0);
+    } finally {
+      if (previous[0] === undefined) delete window.showWarningMessage; else window.showWarningMessage = previous[0];
+      if (previous[1] === undefined) delete workspace.saveAll; else workspace.saveAll = previous[1];
+    }
+  }, 20_000);
+  it('does not start a second submit once time has run out', async () => {
+    vi.spyOn(config, 'readSession').mockReturnValue({ ...session, deadlineAt: Date.now() - 1_000 });
+    const window = vscode.window as unknown as Record<string, unknown>;
+    const workspace = vscode.workspace as unknown as Record<string, unknown>;
+    const previous = [window.showWarningMessage, workspace.saveAll];
+    window.showWarningMessage = vi.fn(async () => 'Submit now');
+    workspace.saveAll = vi.fn(async () => true);
+    const told = vi.spyOn(vscode.window, 'showInformationMessage');
+    try {
+      view(); await receive({ action: 'submit', sessionId: 's1' });
+      await vi.waitFor(() => expect(told).toHaveBeenCalledWith("Time's up. Your work is being submitted automatically."), { timeout: 10_000 });
+      expect(state.terminals).toHaveLength(0);
+    } finally {
+      if (previous[0] === undefined) delete window.showWarningMessage; else window.showWarningMessage = previous[0];
+      if (previous[1] === undefined) delete workspace.saveAll; else workspace.saveAll = previous[1];
+    }
+  }, 20_000);
+  it('never reports an unknown change list as no changes', async () => {
+    expect(await changedFiles(root, undefined)).toBeNull(); // not a git repo, so no HEAD~1 either
+    expect(await changedFiles(root, 'abcdef1')).toBeNull();
+    expect(submitDetail(null, undefined)).toContain("Couldn't list your changed files.");
+    expect(submitDetail(null, undefined)).not.toContain('Time left');
+    expect(submitDetail([], undefined)).toContain('No changes found in this workspace.');
+    expect(submitDetail([], undefined, 2)).toContain('Unsaved changes in 2 open files will be saved and submitted.');
+    const many = Array.from({ length: 12 }, (_, i) => `f${String(i).padStart(2, '0')}`);
+    expect(submitDetail(many, undefined)).toContain('Changed files (12):\n  f00');
+    expect(submitDetail(many, undefined)).toContain('  f09\n  and 2 more');
   });
   it('opens one submission flow for a double-click', async () => {
     view();
     const window = vscode.window as unknown as Record<string, unknown>;
     const workspace = vscode.workspace as unknown as Record<string, unknown>;
     const previous = [window.showWarningMessage, workspace.saveAll];
-    window.showWarningMessage = vi.fn(async () => 'Review submission');
+    window.showWarningMessage = vi.fn(async () => 'Submit now');
     workspace.saveAll = vi.fn(async () => true);
     try {
       await Promise.all([receive({ action: 'submit', sessionId: 's1' }), receive({ action: 'submit', sessionId: 's1' })]);
-      expect(state.terminals).toHaveLength(1);
+      await vi.waitFor(() => expect(state.terminals).toHaveLength(1));
+      expect(state.terminals[0].commands).toEqual(['promptster done']);
       expect(window.showWarningMessage).toHaveBeenCalledTimes(1);
     } finally {
       if (previous[0] === undefined) delete window.showWarningMessage; else window.showWarningMessage = previous[0];
@@ -146,7 +218,7 @@ describe('native assessment actions',()=>{
 });
 describe('hosted box without assessment.json',()=>{
   // Nothing in the hosted lane writes assessment.json, so a live box never set
-  // promptster.assessmentWorkspace and "Review & submit" never appeared.
+  // promptster.assessmentWorkspace and the submit button never appeared.
   const hosted = fromJson({apiUrl:'https://api.example.test',sessionToken:'test',sessionId:'s1',tools:['claude'],consentAccepted:true,noSelfEvict:true,assessmentTitle:'Fix the exporter',issueId:'tf-react-spectrum-8696'},'.promptster/session.json')!;
   beforeEach(()=>{rmSync(join(root,'assessment.json'));vi.spyOn(config,'readSession').mockReturnValue(hosted)});
   it('derives the brief from the ARM session and shows the view',()=>{
