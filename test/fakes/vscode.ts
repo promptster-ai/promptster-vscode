@@ -96,7 +96,19 @@ export const state = singleton('__promptsterFakeState', () => ({
   diagnostics: new Map<string, { severity: number; message: string }[]>(),
   logLines: [] as string[],
   terminals: [] as Array<{ name: string; shown: boolean; commands: string[] }>,
+  panels: [] as FakePanel[],
 }));
+
+export interface FakePanel {
+  viewType: string;
+  title: string;
+  options: unknown;
+  webview: { html: string };
+  revealed: number;
+  reveal(): void;
+  onDidDispose(fn: () => void): FakeDisposable;
+  dispose(): void;
+}
 
 export function resetState(): void {
   clearWatchers();
@@ -107,6 +119,8 @@ export function resetState(): void {
   state.diagnostics = new Map();
   state.logLines = [];
   state.terminals = [];
+  for (const panel of state.panels) panel.dispose();
+  state.panels = [];
 }
 
 export const DiagnosticSeverity = { Error: 0, Warning: 1, Information: 2, Hint: 3 };
@@ -131,7 +145,17 @@ export const window = {
     command: undefined as unknown,
   }),
   registerWebviewViewProvider: () => ({ dispose: () => {} }),
-  registerCustomEditorProvider: () => ({ dispose: () => {} }),
+  createWebviewPanel: (viewType: string, title: string, _column: unknown, options: unknown): FakePanel => {
+    const disposed: Array<() => void> = [];
+    const panel: FakePanel = {
+      viewType, title, options, webview: { html: '' }, revealed: 0,
+      reveal: () => { panel.revealed++; },
+      onDidDispose: (fn) => { disposed.push(fn); return { dispose: () => {} }; },
+      dispose: () => { for (const fn of disposed.splice(0)) fn(); },
+    };
+    state.panels.push(panel);
+    return panel;
+  },
   createTerminal: ({ name }: { name: string }) => {
     const terminal = { name, shown: false, commands: [] as string[] };
     state.terminals.push(terminal);
@@ -279,7 +303,7 @@ export const commands = singleton('__promptsterFakeCommands', () => {
   };
 });
 
-export const ViewColumn = { One: 1 };
+export const ViewColumn = { Active: -1, One: 1 };
 
 /** A vscode.Memento that survives a simulated editor reload. */
 export class FakeMemento {

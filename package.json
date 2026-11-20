@@ -80,19 +80,7 @@
           "initialSize": 2
         }
       ]
-    },
-    "customEditors": [
-      {
-        "viewType": "promptster.ticket",
-        "displayName": "Assessment ticket",
-        "selector": [
-          {
-            "filenamePattern": "TASK.html"
-          }
-        ],
-        "priority": "default"
-      }
-    ]
+    }
   },
   "scripts": {
     "preinstall": "node scripts/only-pnpm.mjs",

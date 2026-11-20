@@ -19,7 +19,7 @@ node .agents/skills/verify-vscode/control-vscode.mjs <cmd>
 | 1 | [Capture lifecycle](capture-lifecycle.md) — the product | `activationEvents: ["onStartupFinished"]` | `src/extension.ts`, `src/config.ts`, `src/consent.ts`, `src/captureState.ts` |
 | 2 | [Pause & resume](pause-resume.md) | `promptster.pause`, `promptster.resume` | `src/ui/commands.ts` |
 | 3 | [Status & consent viewer](status-and-consent.md) | `promptster.viewDetails`, `promptster.showStatus`, `promptster.configure`, status bar | `src/ui/statusBar.ts`, `src/ui/consentWebview.ts` |
-| 4 | [Assessment views & ticket](views-and-ticket.md) | views `promptster.assessment`, `promptster.teammates`; custom editor `promptster.ticket` | `src/ui/assessment.ts`, `src/ui/teammates.ts`, `src/ui/ticket.ts` |
+| 4 | [Assessment views & ticket](views-and-ticket.md) | views `promptster.assessment`, `promptster.teammates`; ticket webview panel `promptster.ticket` | `src/ui/assessment.ts`, `src/ui/teammates.ts`, `src/ui/ticket.ts` |
 | 5 | [promptster-cli integration](cli-integration.md) | not contributed — the install/detect path | `promptster-cli/editor_extension*.go`, `src/captureState.ts` |
 
 There is exactly one contributed setting, `promptster.enabled`, and it is in
