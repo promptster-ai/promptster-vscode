@@ -47,9 +47,14 @@ function getConsentHtml(): string {
 </head>
 <body>
   <h1>Promptster Assessment — Captured Signals</h1>
-  <p>This extension captures metadata about your development process for assessment evaluation. Here's exactly what is and isn't captured:</p>
+  <p>This page describes what <strong>this editor extension</strong> captures. It is one part of a Promptster session, not all of it.</p>
 
-  <h2>What IS captured</h2>
+  <div class="signal">
+    <strong>Captured elsewhere in your session</strong>
+    <em>Your prompts to the AI tool, its responses and tool calls, code changes as diffs, full terminal command lines with their exit codes, and the output of commands the AI runs are captured by the rest of Promptster's session capture (its CLI hooks and AI proxy), not by this extension. The consent notice you accepted before starting describes what the session records.</em>
+  </div>
+
+  <h2>What this extension captures</h2>
 
   <div class="signal">
     <strong>File navigation</strong>
@@ -58,17 +63,17 @@ function getConsentHtml(): string {
 
   <div class="signal">
     <strong>Scroll depth</strong>
-    <em>How far you scroll through a file (as a percentage). Not which specific lines you read.</em>
+    <em>Where you are in a file: each time you scroll, the last line in view, that as a percentage of the file, and the file's line count. Not the text on those lines.</em>
   </div>
 
   <div class="signal">
     <strong>Edit patterns</strong>
-    <em>Typing speed (characters per burst), paste frequency (character/line counts only), undo/redo usage.</em>
+    <em>For each burst of typing: characters typed, how long it took, and which lines it touched. For each paste: its size in characters and lines, never its text. Keystroke-interval timing only if you enabled cadence checks when the session started.</em>
   </div>
 
   <div class="signal">
-    <strong>Focus &amp; attention</strong>
-    <em>When the editor is focused/blurred, idle periods (after 60s of no activity).</em>
+    <strong>Idle periods</strong>
+    <em>When there has been no activity in the editor for 60 seconds, how much longer it lasted after that, the file you were last in, and whether your last action was an edit or navigation. Not whether the editor window has focus.</em>
   </div>
 
   <div class="signal">
@@ -78,7 +83,7 @@ function getConsentHtml(): string {
 
   <div class="signal">
     <strong>Terminal commands</strong>
-    <em>Commands you run in the integrated terminal and their exit codes. Not command output.</em>
+    <em>For commands you run in the integrated terminal, wherever its current directory is: the program name and the word after it when that is a plain word (e.g. <code>git push</code>, <code>cd src</code>), how many words the command had, whether it had flags or looked like it contained a secret, its exit code and duration. This extension does not send the rest of the command line or its output.</em>
   </div>
 
   <div class="signal">
@@ -86,11 +91,11 @@ function getConsentHtml(): string {
     <em>When files are created or deleted in the workspace. File path only.</em>
   </div>
 
-  <h2>What is NOT captured</h2>
+  <h2>What this extension does NOT capture</h2>
 
   <div class="not-captured">
-    <strong>Never captured:</strong>
-    <em>File contents, source code, diffs, clipboard text, terminal output, AI prompt text, diagnostic messages, URLs, screenshots, or anything outside your workspace.</em>
+    <strong>Not captured by this extension:</strong>
+    <em>File contents, source code, diffs, clipboard text, terminal output, AI prompt text, diagnostic messages, URLs, window focus or whether you switched to another application, screenshots, or anything outside your workspace (apart from the terminal commands above).</em>
   </div>
 
 </body>
