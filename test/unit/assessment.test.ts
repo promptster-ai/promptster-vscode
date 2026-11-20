@@ -168,7 +168,9 @@ describe('submit stays reachable', () => {
   it('gives Assessment more of the sidebar than Teammates and pins the Finish section', () => {
     const views = JSON.parse(readFileSync(join(__dirname, '../../package.json'), 'utf8')).contributes.views.promptster as Array<{ id: string; initialSize: number }>;
     const size = (id: string) => views.find(v => v.id === id)!.initialSize;
-    expect(size('promptster.assessment')).toBeGreaterThan(size('promptster.teammates'));
+    // Its content needs ~390px of the ~760px the two views share at 900px tall.
+    const share = size('promptster.assessment') / (size('promptster.assessment') + size('promptster.teammates'));
+    expect(share).toBeGreaterThanOrEqual(0.55);
     const source = readFileSync(join(__dirname, '../../src/ui/assessment.ts'), 'utf8');
     expect(source).toContain('#content>section:last-child{position:sticky;bottom:0;');
     expect(source).toMatch(/<section><div class="label">Finish your work<\/div>.*?<\/section><\/div><\/main>/);
