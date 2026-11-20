@@ -8,7 +8,7 @@ import * as config from '../../src/config';
 import { fromJson } from '../../src/config';
 vi.mock('vscode', () => import('../fakes/vscode'));
 import { state, resetState } from '../fakes/vscode';
-import { AssessmentView, parseWorkspaceBrief, hostedBrief, changedFiles, submitDetail } from '../../src/ui/assessment';
+import { AssessmentView, parseWorkspaceBrief, hostedBrief, changedFiles, submitDetail, unsavedUnder } from '../../src/ui/assessment';
 let root: string;
 const session = fromJson({apiUrl:'https://api.example.test',sessionToken:'test',sessionId:'s1',tools:['codex'],consentAccepted:true,noSelfEvict:true},'.promptster/session.json')!;
 let receive: (request: unknown) => Promise<void>;
@@ -132,7 +132,12 @@ describe('native assessment actions',()=>{
     expect(submitDetail(null, undefined)).toContain("Couldn't list your changed files.");
     expect(submitDetail(null, undefined)).not.toContain('Time left');
     expect(submitDetail([], undefined)).toContain('No changes found in this workspace.');
-    expect(submitDetail([], undefined, 2)).toContain('Unsaved changes in 2 open files will be saved and submitted.');
+    expect(submitDetail([], undefined, 2)).toContain('Unsaved changes in 2 open files will be saved before submitting.');
+    // Only editors saving can put into the upload: on disk, under the task root.
+    const workspace = vscode.workspace as unknown as Record<string, unknown>;
+    const doc = (scheme: string, fsPath: string, isDirty = true) => ({ isDirty, uri: { scheme, fsPath } });
+    workspace.textDocuments = [doc('file', join(root, 'a.py')), doc('file', join(root, 'b.py'), false), doc('untitled', join(root, 'Untitled-1')), doc('file', join(root, '..', 'outside.py')), doc('file', root)];
+    try { expect(unsavedUnder(root)).toBe(1); } finally { delete workspace.textDocuments; }
     const many = Array.from({ length: 12 }, (_, i) => `f${String(i).padStart(2, '0')}`);
     expect(submitDetail(many, undefined)).toContain('Changed files (12):\n  f00');
     expect(submitDetail(many, undefined)).toContain('  f09\n  and 2 more');

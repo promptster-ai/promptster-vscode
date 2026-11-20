@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { showTicket } from './ticket';
-import { join } from 'node:path';
+import { join, relative, isAbsolute } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { timeLeftText } from './timeLeft';
@@ -104,6 +104,15 @@ export async function changedFiles(root: string, base: string | undefined): Prom
   }
 }
 
+/** Unsaved editors on disk under the task root: the ones saving can put into the upload. Untitled buffers can't. */
+export function unsavedUnder(taskRoot: string): number {
+  return (vscode.workspace.textDocuments ?? []).filter(document => {
+    if (!document.isDirty || document.uri.scheme !== 'file') return false;
+    const inside = relative(taskRoot, document.uri.fsPath);
+    return !!inside && !inside.startsWith('..') && !isAbsolute(inside);
+  }).length;
+}
+
 /** The submit confirmation's detail: what submitting does, the time left, and what changed. */
 export function submitDetail(files: string[] | null, deadlineAt: number | undefined, unsaved = 0, now = Date.now()): string {
   const lines = ["This uploads your workspace as it is now and ends the assessment. You can't undo it or keep working afterwards."];
@@ -115,7 +124,7 @@ export function submitDetail(files: string[] | null, deadlineAt: number | undefi
     if (files.length > 10) shown.push(`  and ${files.length - 10} more`);
     lines.push(`Changed files (${files.length}):\n${shown.join('\n')}`, 'Secret files such as .env and private keys are left out of the upload.');
   }
-  if (unsaved) lines.push(`Unsaved changes in ${unsaved} open file${unsaved === 1 ? '' : 's'} will be saved and submitted.`);
+  if (unsaved) lines.push(`Unsaved changes in ${unsaved} open file${unsaved === 1 ? '' : 's'} will be saved before submitting.`);
   return lines.join('\n\n');
 }
 
@@ -216,8 +225,9 @@ export class AssessmentView implements vscode.WebviewViewProvider {
             // `promptster done` submits at once, with no prompt of its own, so this
             // modal is the only confirmation: it must say that, and show what goes.
             // Nothing is saved until the candidate accepts; unsaved editors are counted.
-            const unsaved = (vscode.workspace.textDocuments ?? []).filter(document => document.isDirty).length;
-            const detail = submitDetail(await changedFiles(session.taskRoot ?? root, session.diffBase), session.deadlineAt, unsaved);
+            const taskRoot = session.taskRoot ?? root;
+            const unsaved = unsavedUnder(taskRoot);
+            const detail = submitDetail(await changedFiles(taskRoot, session.diffBase), session.deadlineAt, unsaved);
             const accepted = await vscode.window.showWarningMessage('Submit your assessment now?', { modal: true, detail }, 'Submit now');
             if (accepted !== 'Submit now') return;
             const current = readSession();
