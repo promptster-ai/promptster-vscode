@@ -7,17 +7,18 @@ const escape = (text: string): string => text.replace(/[&<>"']/g, c => ({ '&': '
  * one of the same length), then **bold** outside them. Anything else,
  * unmatched markers included, stays literal.
  */
-function inline(text: string): string {
+function inline(text: string, cell = false): string {
   const code: string[] = [];
   const keep = (html: string) => `\0${code.push(html) - 1}\0`;
   return escape(text.replace(/\0/g, ''))
     .replace(/(?<!`)(`+)(?!`)([\s\S]*?[^`])\1(?!`)/g, (_, _run: string, span: string) => keep(`<code>${/^ .*[^ ].* $/.test(span) ? span.slice(1, -1) : span}</code>`))
-    .replace(/\\\|/g, '|')
+    // A table cell's `\|` was already unescaped by cells(); doing it again eats a literal backslash.
+    .replace(/\\\|/g, cell ? '\\|' : '|')
     .replace(/\*\*(?=\S)((?:(?!\*\*).)+?)(?<=\S)\*\*/g, '<strong>$1</strong>')
     .replace(/\0(\d+)\0/g, (_, n: string) => code[Number(n)]);
 }
 
-/** A table row's cells: split on `|`, but not an escaped `\|` or one inside a code span. */
+/** A table row's cells: split on `|`, but not an escaped `\|` (kept as `|`, code spans included) or one inside a code span. */
 function cells(row: string): string[] {
   const out = [''];
   let tick = 0;
@@ -31,7 +32,7 @@ function cells(row: string): string[] {
       else if (!tick && new RegExp(`(?<!\`)\`{${run}}(?!\`)`).test(row.slice(i + run))) tick = run;
       out[out.length - 1] += row.slice(i, i + run);
       i += run - 1;
-    } else if (c === '\\' && row[i + 1] === '|') { out[out.length - 1] += '\\|'; i++; }
+    } else if (c === '\\' && row[i + 1] === '|') { out[out.length - 1] += '|'; i++; }
     else if (c === '|' && !tick) out.push('');
     else out[out.length - 1] += c;
   }
@@ -40,6 +41,8 @@ function cells(row: string): string[] {
   return out.map(cell => cell.trim());
 }
 
+/** A blank line, heading, bullet, quote or rule ends a table, even when it holds a `|`. */
+const ENDS_TABLE = /^\s*$|^#{1,6} |^\s*[-*+] |^\s*>|^\s*([-*_])(\s*\1){2,}\s*$/;
 const TABLE_RULE = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
 const isTable = (head: string, rule = ''): boolean =>
   head.includes('|') && rule.includes('|') && TABLE_RULE.test(rule) && cells(head).length === cells(rule).length;
@@ -56,9 +59,9 @@ function blocks(lines: string[]): string {
     const last = out[out.length - 1];
     if (isTable(line, lines[i + 1])) {
       const width = cells(line).length;
-      const row = (tag: string, text: string) => `<tr>${cells(text).slice(0, width).map(cell => `<${tag}>${inline(cell)}</${tag}>`).join('')}</tr>`;
+      const row = (tag: string, text: string) => `<tr>${cells(text).slice(0, width).map(cell => `<${tag}>${inline(cell, true)}</${tag}>`).join('')}</tr>`;
       const rows: string[] = [];
-      for (i += 2; i < lines.length && lines[i].trim() && lines[i].includes('|'); i++) rows.push(row('td', lines[i]));
+      for (i += 2; i < lines.length && lines[i].includes('|') && !ENDS_TABLE.test(lines[i]); i++) rows.push(row('td', lines[i]));
       i--;
       out.push(`<table><thead>${row('th', line)}</thead><tbody>${rows.join('')}</tbody></table>`);
     } else if (/^\s*(=+|-+)\s*$/.test(line) && lines[i - 1]?.trim() && last?.startsWith('<p>')) {
