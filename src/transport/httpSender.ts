@@ -1,3 +1,4 @@
+import { gzipSync } from 'node:zlib';
 import type { PromptsterConfig, PromptsterEvent } from '../types';
 import { log, logError } from '../utils/logger';
 
@@ -69,27 +70,43 @@ export class HttpSender {
     return out;
   }
 
+  /**
+   * Set once a gzipped resend is refused with 400/415: this backend doesn't
+   * inflate ingest bodies, so further resends would only spend the shared
+   * 100 req/min bucket.
+   */
+  private gzipRefused = false;
+
+  /**
+   * POST one event to `/v1/hooks/ingest`.
+   *
+   * Render's edge WAF 403s some bodies before they reach the API, with an HTML
+   * "Blocked" page: a terminal command like `source .venv/bin/activate
+   * 2>/dev/null; python -m pytest -q` was one, so the test run never reached the
+   * timeline. The WAF doesn't read compressed bodies, so a blocked event is sent
+   * once more, gzipped, under the same deadline. Plain goes first so a backend
+   * that doesn't inflate ingest bodies (self-hosted, or older) keeps working.
+   * The API answers in JSON, so its own 403 (a real refusal) is not retried.
+   */
   private async sendOne(event: PromptsterEvent): Promise<boolean> {
-    const url = `${this.config.apiUrl}/v1/hooks/ingest`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      const body = JSON.stringify(event);
+      const label = `${event.kind}/${(event.data as Record<string, unknown> | null)?.subKind ?? ''}`;
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': this.config.apiKey,
-        },
-        body: JSON.stringify(event),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeout);
+      let response = await this.post(body, false, controller.signal);
+      if (isEdgeBlock(response) && !this.gzipRefused) {
+        await discard(response);
+        log(`Ingest blocked at the edge (HTTP 403), resending gzipped: ${label}`);
+        response = await this.post(gzipSync(body), true, controller.signal);
+        if (response.status === 400 || response.status === 415) this.gzipRefused = true;
+      }
+      await discard(response);
 
       if (!response.ok) {
-        logError(`Ingest failed (${response.status}): ${event.kind}/${(event.data as Record<string, unknown>).subKind ?? ''}`);
+        logError(`Ingest failed (${response.status}): ${label}`);
         return false;
       }
 
@@ -101,6 +118,32 @@ export class HttpSender {
         logError('Ingest request failed', err);
       }
       return false;
+    } finally {
+      clearTimeout(timeout);
     }
   }
+
+  private post(body: string | Uint8Array, gzipped: boolean, signal: AbortSignal): Promise<Response> {
+    return fetch(`${this.config.apiUrl}/v1/hooks/ingest`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(gzipped ? { 'Content-Encoding': 'gzip' } : {}),
+        'X-API-Key': this.config.apiKey,
+      },
+      body,
+      signal,
+    });
+  }
+}
+
+/** Release the connection: nothing reads ingest response bodies. */
+async function discard(response: Response): Promise<void> {
+  await response.body?.cancel().catch(() => undefined);
+}
+
+/** A 403 with an HTML body is Render's edge block page; the API answers in JSON. */
+function isEdgeBlock(response: Response): boolean {
+  return response.status === 403 &&
+    (response.headers?.get('content-type') ?? '').toLowerCase().includes('text/html');
 }
