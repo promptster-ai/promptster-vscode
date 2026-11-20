@@ -16,13 +16,15 @@ Editor telemetry extension for [Promptster](https://promptster.dev) hiring asses
 | Signal | Details |
 |--------|---------|
 | **File navigation** | Which files you open, how long you view them, scroll depth |
-| **Edit patterns** | Characters per typing burst, burst duration, paste size. Keystroke-interval timing only if you enabled cadence checks at `promptster start` |
-| **Attention** | Idle periods in the editor (60s threshold). Not whether the editor window has focus |
+| **Edit patterns** | Characters per typing burst, burst duration and the lines it touched, paste size. Keystroke-interval timing only if you enabled cadence checks at `promptster start` |
+| **Attention** | Idle periods in the editor (60s threshold), the file last active and whether the last action was an edit or navigation. Not whether the editor window has focus |
 | **Diagnostics** | Error/warning resolution counts per file |
-| **Terminal commands** | Program and subcommand only (e.g. `git push`), exit code, duration — never the arguments, the full command line, or its output |
+| **Terminal commands** | Program and the next word when it is a plain word (e.g. `git push`, `cd src`), word count, whether it had flags or a likely secret, exit code, duration — never the rest of the command line or its output |
 | **File lifecycle** | File creates and deletes |
 
-## What Is NOT Captured
+## What This Extension Does NOT Capture
+
+This list covers the extension only. Prompts, AI responses, diffs, full command lines and the output of the AI's commands are captured by the rest of a Promptster session (its CLI hooks and AI proxy), not by this extension; the consent notice a candidate accepts at the start describes what the session records.
 
 - File contents, source code, or diffs
 - Clipboard text
@@ -30,7 +32,7 @@ Editor telemetry extension for [Promptster](https://promptster.dev) hiring asses
 - AI prompt text
 - Diagnostic error messages
 - URLs or browser activity
-- Anything outside the workspace
+- Anything outside the workspace, apart from the terminal commands above
 - Window focus, or whether you switched to another application
 
 This list is enforced by a release gate, not by review: `test/gate/exclusionList.test.ts`
@@ -51,7 +53,7 @@ diagnostics are canary strings, and fails if any of them reach the wire.
 |---------|-------------|
 | `Promptster: Pause Capture` | Temporarily stop capturing signals |
 | `Promptster: Resume Capture` | Resume after pausing |
-| `Promptster: View Captured Signals` | See exactly what is being captured |
+| `Promptster: View Captured Signals` | See what this extension captures, and where the rest of the session's capture is disclosed |
 | `Promptster: Show Status` | View current capture status |
 
 ## Status Bar
@@ -73,7 +75,7 @@ Visit the [Promptster dashboard](https://promptster.dev/dashboard) to view candi
 
 - File reading patterns and exploration breadth
 - Edit velocity and typing burst analysis
-- Focus fragmentation and idle patterns
+- Idle patterns
 - Terminal command usage
 - Diagnostic interaction and error resolution
 

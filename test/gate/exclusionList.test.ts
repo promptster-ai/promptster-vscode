@@ -37,12 +37,12 @@ const PUBLISHED_EXCLUSIONS = [
   'AI prompt text',
   'Diagnostic error messages',
   'URLs or browser activity',
-  'Anything outside the workspace',
+  'Anything outside the workspace, apart from the terminal commands above',
   'Window focus, or whether you switched to another application',
 ];
 
 function readmeExclusionList(): string[] {
-  const section = README.split('## What Is NOT Captured')[1];
+  const section = README.split('## What This Extension Does NOT Capture')[1];
   if (section === undefined) return [];
   return section
     .split('\n##')[0]
@@ -65,7 +65,7 @@ describe('published exclusion list ↔ shipped collectors', () => {
         path.join(REPO_ROOT, 'src/ui/consentWebview.ts'),
         'utf-8',
       );
-      const notCaptured = webview.split('What is NOT captured')[1] ?? '';
+      const notCaptured = webview.split('What this extension does NOT capture')[1] ?? '';
       for (const claim of [
         'File contents',
         'source code',
@@ -76,9 +76,29 @@ describe('published exclusion list ↔ shipped collectors', () => {
         'diagnostic messages',
         'URLs',
         'anything outside your workspace',
+        'window focus',
       ]) {
         expect(notCaptured, `consent webview must still name: ${claim}`).toContain(claim);
       }
+    });
+
+    it('the in-editor screen scopes its exclusions to this extension', () => {
+      // Prompts, AI responses, diffs and full command lines ARE captured in a
+      // session, by the CLI's hooks. The extension's page must not tell a
+      // candidate otherwise, and must point at where those are disclosed.
+      const webview = fs.readFileSync(
+        path.join(REPO_ROOT, 'src/ui/consentWebview.ts'),
+        'utf-8',
+      );
+      for (const doc of [webview, README]) {
+        expect(doc).not.toMatch(/never captured/i);
+        expect(doc).toContain('not by this extension');
+        expect(doc).toContain('consent notice');
+      }
+      // Signals the collectors do not emit must not be listed as captured.
+      const captured = webview.split('What this extension captures')[1]?.split('does NOT capture')[0] ?? '';
+      expect(captured).toContain('Edit patterns');
+      expect(captured).not.toMatch(/undo|redo|focused\/blurred/i);
     });
   });
 
