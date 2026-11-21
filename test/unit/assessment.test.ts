@@ -76,11 +76,15 @@ describe('native assessment actions',()=>{
   // confirmation, so it must say it submits now and show what goes.
   it('says submitting is final and lists what changed since the base commit', async () => {
     const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { encoding: 'utf8' }).trim();
-    git('init', '-q'); writeFileSync(join(root, '.gitignore'), 'ignored/\n'); writeFileSync(join(root, 'a.py'), 'a\n'); writeFileSync(join(root, 'same.py'), 's\n');
+    git('init', '-q'); writeFileSync(join(root, '.gitignore'), 'ignored/\n'); writeFileSync(join(root, 'a.py'), 'a\n'); writeFileSync(join(root, 'same.py'), 's\n'); writeFileSync(join(root, 'fixture.pem'), 'upstream\n'); writeFileSync(join(root, 'moved.txt'), 'm\n');
     git('add', '.'); git('commit', '-qm', 'base');
     const base = git('rev-parse', 'HEAD');
     writeFileSync(join(root, 'a.py'), 'changed\n'); writeFileSync(join(root, 'committed.py'), 'c\n'); git('add', 'committed.py'); git('commit', '-qm', 'agent commit');
     writeFileSync(join(root, 'new.py'), 'n\n'); mkdirSync(join(root, '.promptster')); writeFileSync(join(root, '.promptster', 'session.json'), '{}'); mkdirSync(join(root, 'ignored')); writeFileSync(join(root, 'ignored', 'x'), 'x');
+    // Secrets the CLI leaves out: new ones, untracked or committed; one tracked at base (a fixture) still goes.
+    writeFileSync(join(root, 'fixture.pem'), 'edited\n'); writeFileSync(join(root, '.env.example'), 'K=\n');
+    for (const secret of ['.env', '.npmrc', 'dev.pem']) writeFileSync(join(root, secret), 'secret\n');
+    writeFileSync(join(root, 'staged.key'), 'k\n'); git('add', 'staged.key'); git('mv', 'moved.txt', 'moved.key'); git('commit', '-qm', 'agent committed a key');
     vi.spyOn(config, 'readSession').mockReturnValue(fromJson({ apiUrl: 'https://api.example.test', sessionToken: 'test', sessionId: 's1', tools: ['codex'], consentAccepted: true, diffBaseCommit: base, repoCommit: 'deadbeef', startedAt: new Date().toISOString(), timeLimitMinutes: 30 }, '.promptster/session.json')!);
     const window = vscode.window as unknown as Record<string, unknown>;
     const workspace = vscode.workspace as unknown as Record<string, unknown>;
@@ -97,7 +101,7 @@ describe('native assessment actions',()=>{
       expect(options.modal).toBe(true);
       expect(options.detail).toContain("can't undo it");
       expect(options.detail).toMatch(/Time left: \d+:\d\d\./);
-      expect(options.detail).toContain('Changed files (3):\n  a.py\n  committed.py\n  new.py');
+      expect(options.detail).toContain('Changed files (6):\n  .env.example\n  a.py\n  committed.py\n  fixture.pem\n  moved.txt\n  new.py\n\n');
       expect(options.detail).not.toContain('ignored');
       expect(options.detail).not.toContain('.promptster');
       // Cancelling saves nothing.
