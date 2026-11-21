@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.3.19
+
+### "Open ticket" no longer writes a file into the candidate's repo
+The button used to write `TASK.html` into the task root and open it. The file
+was then staged and submitted as the candidate's work, and graded as their
+evidence. The ticket now renders in a webview panel rebuilt from `TASK.md` on
+each click (scripts off, no local resources, CSP `default-src 'none'`), and
+nothing is written to the workspace (#36).
+
+### The ticket renders its markdown
+Bold, code spans, rules, headings, bullets and pipe tables render instead of
+showing raw `**` and backticks, and each source line keeps its own line. HTML in
+the ticket is still shown as text (#40, #41).
+
+### Captured Signals describes this extension, not the whole session
+The page said prompts and diffs were never captured; the session's hooks and AI
+proxy capture them. It now says it covers only this extension, points at the
+consent notice for the rest, and drops undo/redo and focus/blur, which the
+extension never sends (#37).
+
+### Submit stays reachable without scrolling
+The Assessment view now starts taller than Teammates (`initialSize` 5 to 4), its
+content is tighter, and the Finish section sticks to the bottom of the view, so
+Submit is visible at the default layout and after a resize (#38).
+
 ## 0.3.18
 
 ### A capture event the edge blocks is resent gzipped
@@ -21,7 +46,7 @@ roster, the stacked teammate cards pushed the message box below the fold, and a
 candidate new to the assessment had no sign they could ask anything. Teammates
 are now a row of compact tabs, and the selected teammate's role sits in the
 thread header. The thread scrolls while the composer stays pinned at the bottom.
-Teammates starts at twice the Assessment view's height (`initialSize`), which
+Teammates started at twice the Assessment view's height (`initialSize`; changed in 0.3.19), which
 applies only the first time the sidebar is laid out, so a size the candidate
 already dragged is kept. In a view too short for everything, the page scrolls
 instead of clipping Send.
