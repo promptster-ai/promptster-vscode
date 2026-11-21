@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.20
+
+### The submit confirmation says it submits now and shows what goes
+"Review & submit" opened a modal promising a review step that doesn't exist:
+confirming ran `promptster done`, which submits at once. The modal now asks
+"Submit your assessment now?" with a "Submit now" button, and says that
+submitting uploads the workspace as it is, ends the assessment and can't be
+undone. It shows the time left, the changed files as `promptster done` sees
+them (up to 10, then "and N more"; "Couldn't list your changed files" when git
+fails, never "no changes"), that secret files such as `.env` are left out, and
+how many unsaved editors under the task root will be saved first. Cancel saves
+and runs nothing, and confirming after the deadline starts no second submit.
+The sidebar button reads "Submit assessment" (#39).
+
 ## 0.3.19
 
 ### "Open ticket" no longer writes a file into the candidate's repo
