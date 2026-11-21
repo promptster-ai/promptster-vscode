@@ -58,6 +58,11 @@ function str(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
+/** A commit sha, or nothing: it is passed to git as an argument. */
+function commit(sha: string | undefined): string | undefined {
+  return sha && /^[0-9a-f]{7,64}$/i.test(sha) ? sha : undefined;
+}
+
 function tools(value: unknown): Array<'claude' | 'codex'> {
   if (!Array.isArray(value)) return [];
   return value.filter((tool): tool is 'claude' | 'codex' => tool === 'claude' || tool === 'codex');
@@ -99,6 +104,8 @@ export function fromJson(
     hosted: raw.noSelfEvict === true,
     assessmentTitle: str(raw.assessmentTitle),
     issueId: str(raw.issueId),
+    taskRoot: str(raw.taskRoot),
+    diffBase: commit(str(raw.diffBaseCommit)?.trim() || str(raw.repoCommit)?.trim()),
     sourceFile,
   };
 }
