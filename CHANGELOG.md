@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.21
+
+### The submit confirmation no longer lists secret files the upload leaves out
+The changed files in the submit confirmation could include a new `.env`,
+`.npmrc` or private key while the same dialog said secret files are left out.
+`promptster done` does leave them out; now the list does too, by the CLI's own
+rules (promptster-cli `isSecretFile`): every new secret file is dropped, and a
+secret-named file the problem repo already tracks (a test fixture) stays
+listed, because it is uploaded. Renames are listed as the old path's deletion
+plus the new path, as the upload sees them (#44).
+
 ## 0.3.20
 
 ### The submit confirmation says it submits now and shows what goes
