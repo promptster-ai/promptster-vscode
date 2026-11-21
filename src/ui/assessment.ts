@@ -5,6 +5,7 @@ import { join, relative, isAbsolute } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { timeLeftText } from './timeLeft';
+import { isSecretFile } from '../utils/secretFiles';
 import { readSession, isExpired } from '../config';
 import type { PromptsterSession } from '../types';
 
@@ -87,6 +88,11 @@ const NOT_SUBMITTED = ['--', '.', ...['TASK.md', '.promptster/', '.claude/settin
  * against the CLI's base commit (HEAD~1 when the session records none, as the
  * CLI does) plus untracked files, as of now on disk. Null when that can't be
  * known (git fails), so the confirmation says so instead of "no changes".
+ *
+ * Secret files are dropped as the CLI drops them: every untracked one (its
+ * git-add excludes) and every changed one the base commit doesn't track
+ * (gitDiffPathspecs, bundleWorkspace). One the problem repo tracks at base,
+ * a test fixture, still goes, so it stays listed.
  */
 export async function changedFiles(root: string, base: string | undefined): Promise<string[] | null> {
   base ??= 'HEAD~1';
@@ -94,11 +100,15 @@ export async function changedFiles(root: string, base: string | undefined): Prom
     execFile('git', ['-C', root, ...args], { timeout: 5_000, maxBuffer: 8 << 20 }, (error, stdout) =>
       error ? reject(error) : resolve(String(stdout).split('\0').filter(Boolean))));
   try {
+    // --no-renames, as the CLI's diff: a rename is its old path deleted plus its new one added.
     const [diff, untracked] = await Promise.all([
-      git('diff', '--name-only', '--relative', '-z', base, ...NOT_SUBMITTED),
+      git('diff', '--name-only', '--relative', '--no-renames', '-z', base, ...NOT_SUBMITTED),
       git('ls-files', '--others', '--exclude-standard', '-z', ...NOT_SUBMITTED),
     ]);
-    return [...new Set([...diff, ...untracked])].sort();
+    // Which changed secret files the base tracks, asked only about those (paths relative to root, like the diff).
+    const secrets = diff.filter(isSecretFile);
+    const tracked = new Set(secrets.length ? await git('ls-tree', '-r', '-z', '--name-only', base, '--', ...secrets) : []);
+    return [...new Set([...diff.filter(file => !isSecretFile(file) || tracked.has(file)), ...untracked.filter(file => !isSecretFile(file))])].sort();
   } catch {
     return null;
   }
