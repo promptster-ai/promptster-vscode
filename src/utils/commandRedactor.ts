@@ -122,20 +122,36 @@ function tokenLooksSecret(raw: string): boolean {
 /**
  * Index of the first token after the leading `NAME=value` assignments. A
  * quoted value can hold spaces (`PASSWORD="correct horse" ./run`), so the
- * words up to its closing quote are part of it, not the program.
+ * words up to its closing quote are part of it, not the program. Quotes are
+ * read as the shell reads them: `\"` inside `"…"` does not close it, and a
+ * word can join quoted parts (`A="x y"'z w'`). If a quote never closes, the
+ * boundary is unknown and no token is treated as the program.
  */
 function skipAssignments(tokens: string[]): number {
   let i = 0;
   while (i < tokens.length && ENV_PREFIX.test(tokens[i])) {
-    const value = tokens[i].slice(tokens[i].indexOf('=') + 1);
-    const quote = value[0];
-    i++;
-    if ((quote === '"' || quote === "'") && !(value.length > 1 && value.endsWith(quote))) {
-      while (i < tokens.length && !tokens[i].endsWith(quote)) i++;
-      i++; // the token that closes the quote
+    let quote: string | null = null;
+    // Walk the assignment word across tokens until it ends outside quotes.
+    for (;;) {
+      if (i >= tokens.length) return tokens.length;
+      const t = tokens[i];
+      for (let c = 0; c < t.length; c++) {
+        const ch = t[c];
+        if (quote === "'") {
+          if (ch === "'") quote = null;
+        } else if (ch === '\\') {
+          c++; // escaped character (outside quotes or inside "…")
+        } else if (quote === '"') {
+          if (ch === '"') quote = null;
+        } else if (ch === '"' || ch === "'") {
+          quote = ch;
+        }
+      }
+      i++;
+      if (quote === null) break;
     }
   }
-  return Math.min(i, tokens.length);
+  return i;
 }
 
 export function redactCommand(raw: string): RedactedCommand {

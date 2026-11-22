@@ -161,6 +161,9 @@ describe('redactCommand', () => {
       ['/bin/echo hunter2', 'hunter2'],
       ['ECHO hunter2', 'hunter2'],
       ['PASSWORD="correct horse battery" ./run', 'horse'],
+      ['PASSWORD="correct \\" horse battery" ./run', 'horse'],
+      ['PASSWORD="correct "horse" battery" ./run', 'battery'],
+      ["PASSWORD='correct horse' ./run", 'horse'],
       ['"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.AbCdEf1234567890"', 'eyJ'],
       ["'sk-proj-abc123'", 'sk-proj'],
     ];
@@ -182,6 +185,8 @@ describe('redactCommand', () => {
       expect(redactCommand('x86_64-linux-gnu-gcc main.c').display).toBe('x86_64-linux-gnu-gcc');
       expect(redactCommand('pnpm build:android-release-2024').display).toBe('pnpm build:android-release-2024');
       expect(redactCommand('PASSWORD="a b c" ./run go').display).toBe('./run go');
+      expect(redactCommand('PASSWORD="a \\" b" ./run go').display).toBe('./run go');
+      expect(redactCommand('A="x y"\'z w\' ./run go').display).toBe('./run go');
       expect(redactCommand('./scripts/deploy-production-environment-now.sh prod').display).toBe(
         './scripts/deploy-production-environment-now.sh prod',
       );
