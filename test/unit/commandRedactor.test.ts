@@ -161,6 +161,8 @@ describe('redactCommand', () => {
       ['/bin/echo hunter2', 'hunter2'],
       ['ECHO hunter2', 'hunter2'],
       ['PASSWORD="correct horse battery" ./run', 'horse'],
+      ['"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.AbCdEf1234567890"', 'eyJ'],
+      ["'sk-proj-abc123'", 'sk-proj'],
     ];
     it.each(leaks)('%s', (raw, secret) => {
       const result = redactCommand(raw);

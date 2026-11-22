@@ -105,7 +105,9 @@ const KNOWN_SECRET_PREFIX =
 const DATA_ARG_PROGRAMS = new Set(['echo', 'printf', 'print', 'export', 'set', 'setenv', 'read', 'eval']);
 
 /** Would this single token leak a credential if shown? */
-function tokenLooksSecret(t: string): boolean {
+function tokenLooksSecret(raw: string): boolean {
+  // Shell quotes are not part of the word: `"eyJ…"` is still a JWT.
+  const t = raw.replace(/^['"]+|['"]+$/g, '');
   if (KNOWN_SECRET_PREFIX.test(t)) return true;
   // A path from somewhere or a dotted name (`./deploy.sh`, `~/bin/x`) is not a
   // key. A bare `/` is no proof: base64 keys (AWS secret keys) carry them.
