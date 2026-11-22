@@ -146,4 +146,108 @@ describe('redactCommand', () => {
       expect(serialized).not.toContain('api.example.com');
     });
   });
+
+  describe('credentials never reach display, program or subcommand', () => {
+    const leaks: Array<[string, string]> = [
+      ['echo sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789', 'sk-ant'],
+      ['echo ghp_abcdefghijklmnop', 'ghp_'],
+      ['echo hunter2', 'hunter2'],
+      ['export GITHUB_TOKEN', 'GITHUB_TOKEN'],
+      ['printf AKIAABCDEFGHIJKLMNOP', 'AKIA'],
+      ['ghp_abcdefghijklmnopqrstuvwxyz0123456789', 'ghp_'],
+      ['sk-proj-abc123', 'sk-proj'],
+      ['mytool A1b2C3d4E5f6G7h8I9j0K1', 'A1b2C3'],
+      ['wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY', 'wJalr'],
+      ['/bin/echo hunter2', 'hunter2'],
+      ['ECHO hunter2', 'hunter2'],
+      ['PASSWORD="correct horse battery" ./run', 'horse'],
+      ['PASSWORD="correct \\" horse battery" ./run', 'horse'],
+      ['PASSWORD="correct "horse" battery" ./run', 'battery'],
+      ["PASSWORD='correct horse' ./run", 'horse'],
+      ['PASSWORD="$(printf "correct horse")" ./run', 'horse'],
+      ['PASSWORD="`printf "correct horse"`" ./run', 'horse'],
+      ['PASSWORD=$(printf "a b" | tr "a" "correct horse") ./run', 'horse'],
+      ['"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.AbCdEf1234567890"', 'eyJ'],
+      ["'sk-proj-abc123'", 'sk-proj'],
+    ];
+    it.each(leaks)('%s', (raw, secret) => {
+      const result = redactCommand(raw);
+      expect(JSON.stringify(result)).not.toContain(secret);
+      expect(result.display.length).toBeGreaterThan(0);
+    });
+
+    it('finds the program after a command substitution with nested quotes', () => {
+      expect(redactCommand('PASSWORD="$(printf "correct horse")" ./run').program).toBe('./run');
+      expect(redactCommand('A=${B:-"x y"} make build').display).toBe('make build');
+    });
+
+    it('marks a pasted key as a secret and shows a placeholder', () => {
+      const result = redactCommand('sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789');
+      expect(result.display).toBe('<redacted>');
+      expect(result.hadPotentialSecret).toBe(true);
+    });
+
+    it('marks a short prefixed key in the subcommand position as a secret', () => {
+      const result = redactCommand('mytool sk-proj-abc123');
+      expect(result.display).toBe('mytool');
+      expect(result.hadPotentialSecret).toBe(true);
+    });
+
+    it('still shows ordinary programs, paths and subcommands', () => {
+      expect(redactCommand('sudo python3 x.py').display).toBe('sudo python3');
+      expect(redactCommand('pnpm test:e2e').display).toBe('pnpm test:e2e');
+      expect(redactCommand('x86_64-linux-gnu-gcc main.c').display).toBe('x86_64-linux-gnu-gcc');
+      expect(redactCommand('pnpm build:android-release-2024').display).toBe('pnpm build:android-release-2024');
+      expect(redactCommand('PASSWORD="a b c" ./run go').display).toBe('./run go');
+      expect(redactCommand('PASSWORD="a \\" b" ./run go').display).toBe('./run go');
+      expect(redactCommand('A="x y"\'z w\' ./run go').display).toBe('./run go');
+      expect(redactCommand('./scripts/deploy-production-environment-now.sh prod').display).toBe(
+        './scripts/deploy-production-environment-now.sh prod',
+      );
+    });
+  });
+
+  describe('secret detection: nearby variants', () => {
+    it.each([
+      'OPENAI_API_KEY=sk-short node x',
+      'export DB_PASSWORD=hunter2',
+      'export GITHUB_TOKEN=abc',
+      'env AWS_SECRET_ACCESS_KEY=abc aws s3 ls',
+      'psql --db-password=hunter2',
+      'tool --client-secret abc',
+      'mysql -phunter2 app',
+      'PGPASSWORD=hunter2 psql',
+      'sshpass -p hunter2 ssh host',
+      'docker login -u me -p hunter2 ghcr.io',
+      'redis-cli -a hunter2 ping',
+      'curl -u admin:hunter2 https://x',
+      'curl --user=admin:hunter2 https://x',
+      'curl -H "Proxy-Authorization: Basic YWRtaW46aHVudGVy" x',
+      'curl -H "X-Auth-Token: abc" x',
+      'curl -H "Private-Token: abc" x',
+      'http GET x "Bearer abcdef123"',
+      'tool --api-key abc',
+      'git clone https://user:tok@github.com/a/b',
+      'curl "https://x/api?access_token=abc"',
+      'curl "https://x/api?a=1&api_key=abc"',
+      'curl "https://bucket.s3/x?X-Amz-Signature=abc"',
+    ])('flags %s', (raw) => {
+      expect(redactCommand(raw).hadPotentialSecret).toBe(true);
+    });
+
+    it.each([
+      'mysql -P 3306 -h db',
+      'mysql -u root -p mydb',
+      'tool --sort-key name',
+      'git commit -m "basic example"',
+      'docker run -p 8080:80 nginx',
+      'mkdir -p src/lib',
+      'docker login --password-stdin ghcr.io',
+      'curl https://example.com/a?page=2',
+      'git push origin main',
+      'cd ~/keyboard-layouts',
+    ])('does not flag %s', (raw) => {
+      expect(redactCommand(raw).hadPotentialSecret).toBe(false);
+    });
+  });
 });
