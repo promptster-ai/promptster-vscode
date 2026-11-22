@@ -164,6 +164,9 @@ describe('redactCommand', () => {
       ['PASSWORD="correct \\" horse battery" ./run', 'horse'],
       ['PASSWORD="correct "horse" battery" ./run', 'battery'],
       ["PASSWORD='correct horse' ./run", 'horse'],
+      ['PASSWORD="$(printf "correct horse")" ./run', 'horse'],
+      ['PASSWORD="`printf "correct horse"`" ./run', 'horse'],
+      ['PASSWORD=$(printf "a b" | tr "a" "correct horse") ./run', 'horse'],
       ['"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.AbCdEf1234567890"', 'eyJ'],
       ["'sk-proj-abc123'", 'sk-proj'],
     ];
@@ -171,6 +174,11 @@ describe('redactCommand', () => {
       const result = redactCommand(raw);
       expect(JSON.stringify(result)).not.toContain(secret);
       expect(result.display.length).toBeGreaterThan(0);
+    });
+
+    it('finds the program after a command substitution with nested quotes', () => {
+      expect(redactCommand('PASSWORD="$(printf "correct horse")" ./run').program).toBe('./run');
+      expect(redactCommand('A=${B:-"x y"} make build').display).toBe('make build');
     });
 
     it('marks a pasted key as a secret and shows a placeholder', () => {

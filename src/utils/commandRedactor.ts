@@ -124,31 +124,47 @@ function tokenLooksSecret(raw: string): boolean {
  * quoted value can hold spaces (`PASSWORD="correct horse" ./run`), so the
  * words up to its closing quote are part of it, not the program. Quotes are
  * read as the shell reads them: `\"` inside `"…"` does not close it, and a
- * word can join quoted parts (`A="x y"'z w'`). If a quote never closes, the
- * boundary is unknown and no token is treated as the program.
+ * word can join quoted parts (`A="x y"'z w'`). Command substitutions nest
+ * their own quotes (`A="$(printf "x y")"`). If a quote or substitution never
+ * closes, the boundary is unknown and no token is treated as the program.
  */
 function skipAssignments(tokens: string[]): number {
   let i = 0;
   while (i < tokens.length && ENV_PREFIX.test(tokens[i])) {
-    let quote: string | null = null;
-    // Walk the assignment word across tokens until it ends outside quotes.
+    // Open contexts, innermost last: quotes, `$(…)`/`(…)`, `${…}`, backticks.
+    // `"$(printf "a b")"` nests a quoted string inside the outer one.
+    const stack: string[] = [];
+    // Walk the assignment word across tokens until it ends outside all of them.
     for (;;) {
       if (i >= tokens.length) return tokens.length;
       const t = tokens[i];
       for (let c = 0; c < t.length; c++) {
         const ch = t[c];
-        if (quote === "'") {
-          if (ch === "'") quote = null;
+        const top = stack[stack.length - 1];
+        if (top === "'") {
+          if (ch === "'") stack.pop();
         } else if (ch === '\\') {
-          c++; // escaped character (outside quotes or inside "…")
-        } else if (quote === '"') {
-          if (ch === '"') quote = null;
-        } else if (ch === '"' || ch === "'") {
-          quote = ch;
+          c++; // escaped character
+        } else if (top === '`' && ch === '`') {
+          stack.pop();
+        } else if (ch === '$' && (t[c + 1] === '(' || t[c + 1] === '{')) {
+          stack.push(t[c + 1]);
+          c++;
+        } else if (top === '"') {
+          if (ch === '"') stack.pop();
+          else if (ch === '`') stack.push('`');
+        } else if (top === '{' && ch === '}') {
+          stack.pop();
+        } else if (ch === '"' || ch === "'" || ch === '`') {
+          stack.push(ch);
+        } else if (top === '(' && ch === '(') {
+          stack.push('(');
+        } else if (top === '(' && ch === ')') {
+          stack.pop();
         }
       }
       i++;
-      if (quote === null) break;
+      if (stack.length === 0) break;
     }
   }
   return i;
