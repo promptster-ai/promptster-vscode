@@ -19,7 +19,7 @@ Editor telemetry extension for [Promptster](https://promptster.dev) hiring asses
 | **Edit patterns** | Characters per typing burst, burst duration and the lines it touched, paste size. Keystroke-interval timing only if you enabled cadence checks at `promptster start` |
 | **Attention** | Idle periods in the editor (60s threshold), the file last active and whether the last action was an edit or navigation. Not whether the editor window has focus |
 | **Diagnostics** | Error/warning resolution counts per file |
-| **Terminal commands** | Program and the next word when it is a plain word (e.g. `git push`, `cd src`), word count, whether it had flags or a likely secret, exit code, duration — never the rest of the command line or its output |
+| **Terminal commands** | Program and the next word when it is a plain word (e.g. `git push`, `cd src`) — never a word shaped like a key or token, nor what follows `echo` or `export` — word count, whether it had flags or a likely secret, exit code, duration — never the rest of the command line or its output |
 | **File lifecycle** | File creates and deletes |
 
 ## What This Extension Does NOT Capture
