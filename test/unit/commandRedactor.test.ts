@@ -179,6 +179,12 @@ describe('redactCommand', () => {
       expect(result.hadPotentialSecret).toBe(true);
     });
 
+    it('marks a short prefixed key in the subcommand position as a secret', () => {
+      const result = redactCommand('mytool sk-proj-abc123');
+      expect(result.display).toBe('mytool');
+      expect(result.hadPotentialSecret).toBe(true);
+    });
+
     it('still shows ordinary programs, paths and subcommands', () => {
       expect(redactCommand('sudo python3 x.py').display).toBe('sudo python3');
       expect(redactCommand('pnpm test:e2e').display).toBe('pnpm test:e2e');

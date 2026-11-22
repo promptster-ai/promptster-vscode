@@ -164,6 +164,7 @@ export function redactCommand(raw: string): RedactedCommand {
   const programRaw = tokens[programIndex] ?? '';
   const program = programRaw && tokenLooksSecret(programRaw) ? '<redacted>' : programRaw;
   const subcommandRaw = tokens[programIndex + 1];
+  const subcommandLooksSecret = !!subcommandRaw && tokenLooksSecret(subcommandRaw);
   // A subcommand must look like a simple word — alphanumeric plus -, _, :
   // (the colon allows things like `cargo test:foo`). URLs, file paths, JSON,
   // and positional args won't match, so they never leak into `display`. A
@@ -174,7 +175,7 @@ export function redactCommand(raw: string): RedactedCommand {
     program !== '<redacted>' &&
     !DATA_ARG_PROGRAMS.has((program.split('/').pop() ?? '').toLowerCase()) &&
     /^[A-Za-z][A-Za-z0-9_:-]*$/.test(subcommandRaw) &&
-    !tokenLooksSecret(subcommandRaw)
+    !subcommandLooksSecret
       ? subcommandRaw
       : undefined;
 
@@ -188,7 +189,8 @@ export function redactCommand(raw: string): RedactedCommand {
     SECRET_URL_PATTERN.test(trimmed) ||
     SECRET_SHORT_FLAG_PATTERN.test(trimmed) ||
     OPAQUE_BLOB_PATTERN.test(trimmed) ||
-    program === '<redacted>';
+    program === '<redacted>' ||
+    subcommandLooksSecret;
 
   const display = subcommand ? `${program} ${subcommand}` : program || '<empty>';
 
