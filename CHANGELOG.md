@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.22
+
+### Terminal commands no longer leak a key typed as a word
+The terminal collector sent the program and the next token whenever that token
+was word-shaped, so `echo sk-ant-api03-…`, `echo hunter2` or a key pasted at
+the prompt went out in full. Now a key-shaped token is never shown as the
+program or subcommand (a pasted key shows as `<redacted>`), and whatever
+follows `echo`, `printf`, `export`, `set`, `read` or `eval` is treated as data.
+`hadPotentialSecret` also flags more: secret-named env vars (`OPENAI_API_KEY=`),
+compound flags (`--db-password`), short password flags (`mysql -phunter2`,
+`curl -u user:pass`), more credential headers and credentials in URLs (#46).
+
 ## 0.3.21
 
 ### The submit confirmation no longer lists secret files the upload leaves out
